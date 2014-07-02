@@ -1,94 +1,107 @@
-#
-# A simple theme that displays relevant, contextual information.
-#
-# Authors:
-#   Sorin Ionescu <padakuro.ionescu@gmail.com>
-#
-# Screenshots:
-#   http://i.imgur.com/nBEEZ.png
-#
+# Pure
+# by Sindre Sorhus
+# https://github.com/sindresorhus/pure
+# MIT License
+# THIS IS A MODIFIED VERSION
 
-# Load dependencies.
-pmodload 'helper'
+# For my own and others sanity
+# git:
+# %b => current branch
+# %a => current action (rebase/merge)
+# prompt:
+# %F => color dict
+# %f => reset color
+# %~ => current path
+# %* => time
+# %n => username
+# %m => shortname host
+# %(?..) => prompt conditional - %(condition.true.false)
 
-function prompt_padakuro_context() {
-  local user=`whoami`
- 
-  if [[ "$user" != "$DEFAULT_USER" || -n "$SSH_CLIENT" ]]; then
-    _prompt_padakuro_context="%(!.%{%F{yellow}%}.)$user@%m"
-  else
-    _prompt_padakuro_context="FOO"
-  fi
+
+# turns seconds into human readable time
+# 165392 => 1d 21h 56m 32s
+prompt_pure_human_time() {
+	local tmp=$1
+	local days=$(( tmp / 60 / 60 / 24 ))
+	local hours=$(( tmp / 60 / 60 % 24 ))
+	local minutes=$(( tmp / 60 % 60 ))
+	local seconds=$(( tmp % 60 ))
+	(( $days > 0 )) && echo -n "${days}d "
+	(( $hours > 0 )) && echo -n "${hours}h "
+	(( $minutes > 0 )) && echo -n "${minutes}m "
+	echo "${seconds}s"
 }
 
-function prompt_padakuro_pwd {
-  local pwd="${PWD/#$HOME/~}"
+# fastest possible way to check if repo is dirty
+prompt_pure_git_dirty() {
+	# check if we're in a git repo
+	command git rev-parse --is-inside-work-tree &>/dev/null || return
+	# check if it's dirty
+	command git diff --quiet --ignore-submodules HEAD &>/dev/null
 
-  if [[ "$pwd" == (#m)[/~] ]]; then
-    _prompt_padakuro_pwd="$MATCH"
-    unset MATCH
-  else
-    _prompt_padakuro_pwd="${${${(@j:/:M)${(@s:/:)pwd}##.#?}:h}%/}/${pwd:t}"
-  fi
+	(($? == 1)) && echo '*'
 }
 
-function prompt_padakuro_precmd {
-  setopt LOCAL_OPTIONS
-  unsetopt XTRACE KSH_ARRAYS
-
-  # Format user and host
-  prompt_padakuro_context
-
-  # Format PWD.
-  prompt_padakuro_pwd
-
-  # Get Git repository information.
-  if (( $+functions[git-info] )); then
-    git-info
-  fi
+# displays the exec time of the last command if set threshold was exceeded
+prompt_pure_cmd_exec_time() {
+	local stop=$EPOCHSECONDS
+	local start=${cmd_timestamp:-$stop}
+	integer elapsed=$stop-$start
+	(($elapsed > ${PURE_CMD_MAX_EXEC_TIME:=5})) && prompt_pure_human_time $elapsed
 }
 
-function prompt_padakuro_setup {
-  setopt LOCAL_OPTIONS
-  unsetopt XTRACE KSH_ARRAYS
-  prompt_opts=(cr percent subst)
+prompt_pure_preexec() {
+	cmd_timestamp=$EPOCHSECONDS
 
-  # Load required functions.
-  autoload -Uz add-zsh-hook
-
-  # Add hook for calling git-info before each command.
-  add-zsh-hook precmd prompt_padakuro_precmd
-
-  # Set editor-info parameters.
-  zstyle ':prezto:module:editor:info:completing' format '%B%F{red}...%f%b'
-  zstyle ':prezto:module:editor:info:keymap:primary' format ' %B%F{red}>%F{yellow}>%F{green}>%f%b'
-  zstyle ':prezto:module:editor:info:keymap:primary:overwrite' format ' %F{red}♺%f'
-  zstyle ':prezto:module:editor:info:keymap:alternate' format ' %B%F{green}<%F{yellow}<%F{red}<%f%b'
-
-  # Set git-info parameters.
-  zstyle ':prezto:module:git:info' verbose 'yes'
-  zstyle ':prezto:module:git:info:action' format ':%%B%F{yellow}%s%f%%b'
-  zstyle ':prezto:module:git:info:added' format ' %%B%F{green}✚%f%%b'
-  zstyle ':prezto:module:git:info:ahead' format ' %%B%F{yellow}⬆%f%%b'
-  zstyle ':prezto:module:git:info:behind' format ' %%B%F{yellow}⬇%f%%b'
-  zstyle ':prezto:module:git:info:branch' format ':%F{green}%b%f'
-  zstyle ':prezto:module:git:info:commit' format ':%F{green}%.7c%f'
-  zstyle ':prezto:module:git:info:deleted' format ' %%B%F{red}✖%f%%b'
-  zstyle ':prezto:module:git:info:modified' format ' %%B%F{blue}✱%f%%b'
-  zstyle ':prezto:module:git:info:position' format ':%F{red}%p%f'
-  zstyle ':prezto:module:git:info:renamed' format ' %%B%F{magenta}➜%f%%b'
-  zstyle ':prezto:module:git:info:stashed' format ' %%B%F{cyan}✭%f%%b'
-  zstyle ':prezto:module:git:info:unmerged' format ' %%B%F{yellow}═%f%%b'
-  zstyle ':prezto:module:git:info:untracked' format ' %%B%F{white}◼%f%%b'
-  zstyle ':prezto:module:git:info:keys' format \
-    'prompt' ' (%F{blue}git%f$(coalesce "%b" "%p" "%c")%s)' \
-    'rprompt' '%A%B%S%a%d%m%r%U%u'
-
-  # Define prompts.
-  PROMPT='%{$bg%K{cyan}%} %{$bg%K{black}%} %F{cyan}%*%f ${_prompt_padakuro_context} %F{cyan}${_prompt_padakuro_pwd}%f${git_info:+${(e)git_info[prompt]}}%(!. %B%F{red}#%f%b.)${editor_info[keymap]} '
-  RPROMPT='${editor_info[overwrite]}%(?:: %F{red}⏎%f)${VIM:+" %B%F{green}V%f%b"}${git_info[rprompt]}'
-  SPROMPT='zsh: correct %F{red}%R%f to %F{green}%r%f [nyae]? '
+	# shows the current dir and executed command in the title when a process is active
+	print -Pn "\e]0;"
+	echo -nE "$PWD:t: $2"
+	print -Pn "\a"
 }
 
-prompt_padakuro_setup "$@"
+# string length ignoring ansi escapes
+prompt_pure_string_length() {
+	echo ${#${(S%%)1//(\%([KF1]|)\{*\}|\%[Bbkf])}}
+}
 
+prompt_pure_precmd() {
+	# shows the full path in the title
+	print -Pn '\e]0;%~\a'
+
+	# git info
+	vcs_info
+
+	local prompt_pure_preprompt="\n%F{blue}%~%F{242}$vcs_info_msg_0_`prompt_pure_git_dirty` $prompt_pure_username%f %F{yellow}`prompt_pure_cmd_exec_time`%f"
+	print -P $prompt_pure_preprompt
+
+	# reset value since `preexec` isn't always triggered
+	unset cmd_timestamp
+}
+
+
+prompt_pure_setup() {
+	# prevent percentage showing up
+	# if output doesn't end with a newline
+	export PROMPT_EOL_MARK=''
+
+	prompt_opts=(cr subst percent)
+
+	zmodload zsh/datetime
+	autoload -Uz add-zsh-hook
+	autoload -Uz vcs_info
+
+	add-zsh-hook precmd prompt_pure_precmd
+	add-zsh-hook preexec prompt_pure_preexec
+
+	zstyle ':vcs_info:*' enable git
+	zstyle ':vcs_info:git*' formats ' %b'
+	zstyle ':vcs_info:git*' actionformats ' %b|%a'
+
+	# show username@host if logged in through SSH
+	[[ "$SSH_CONNECTION" != '' ]] && prompt_pure_username='%n@%m '
+
+	# prompt turns red if the previous command didn't exit with 0
+	PROMPT='(%*) %(?.%F{magenta}.%F{red})::%f '
+}
+
+prompt_pure_setup "$@"
